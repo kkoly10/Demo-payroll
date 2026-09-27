@@ -427,7 +427,7 @@ export default function ReconciliationApp() {
                   <h2>{unresolved.length ? "Needs review" : "Ready for approval"}</h2>
                 </div>
                 <p className="heroCopy">
-                  {matchedCount} of {dataset.employees.length} employees fully reconcile across the available sources. No payroll change happens from this screen.
+                  {matchedCount} of {dataset.employees.length} employees fully reconcile across the available sources. Reconciled means the compared values agree—not that payroll was approved or submitted. No payroll change happens from this screen.
                 </p>
                 <div className="heroStats" aria-label="Payroll reconciliation summary">
                   <div><strong>{matchedCount}</strong><span>Reconciled</span></div>
@@ -468,7 +468,7 @@ export default function ReconciliationApp() {
               <div>
                 <span>Payroll journey</span>
                 <InfoHint label="How do I read the payroll journey?">
-                  This shows where the pay period sits in the workflow. A completed step means its demo check has passed; the highlighted step is where attention is currently focused.
+                  This shows where the pay period sits in the workflow. A check means that demo stage is complete and its source data is available; it does not mean the systems agree. Reconcile is where cross-system differences are surfaced, and the highlighted step is the current stage.
                 </InfoHint>
               </div>
               <small>Current stage: {unresolved.length ? "Reconcile" : "Approve"}</small>
@@ -507,7 +507,7 @@ export default function ReconciliationApp() {
               action={
                 <div className="headingActions">
                   <InfoHint label="What should I do with an exception?">
-                    Open <strong>Trace</strong> to inspect the source values. <strong>Simulate correction</strong> changes only the synthetic demo copy and re-runs reconciliation. Production would correct the authoritative source or record an approved exception, then synchronize again.
+                    Open <strong>Trace</strong> to inspect the source values. <strong>Simulate demo correction</strong> changes only the synthetic demo copy and re-runs reconciliation. It does not modify Raken, Jonas, Paylocity, approve payroll, or submit payroll. Production would correct the authoritative source or record an approved exception, then synchronize again.
                   </InfoHint>
                   <button className="secondaryButton" onClick={() => setView("employees")}>View all employees</button>
                 </div>
@@ -542,7 +542,7 @@ export default function ReconciliationApp() {
                     </div>
                     <div className="rowActions">
                       <button className="textButton" onClick={() => setSelectedEmployee(employee)}>Trace</button>
-                      <button className="secondaryButton compact" onClick={() => resolveException(item)}>Simulate correction</button>
+                      <button className="secondaryButton compact" onClick={() => resolveException(item)}>Simulate demo correction</button>
                     </div>
                   </article>
                 );
@@ -639,7 +639,7 @@ export default function ReconciliationApp() {
           <section className="pageStack">
             <PageHeading
               title="Integrations"
-              description="Payroll users would not configure these. IT manages connections in the background; Payroll should open the app and see current information already available."
+              description="Simulated source status for this demo—not live connectivity. In production, IT would manage connections in the background; Payroll would only need to see availability and last synchronization."
             />
             <div className="integrationGrid">
               <IntegrationCard source="raken" method="Public API / approved export" access="Read only" />
@@ -863,9 +863,10 @@ function EmployeeTable({
             const r = sourceRecord(dataset, "raken", employee.id)!;
             const j = sourceRecord(dataset, "jonas", employee.id)!;
             const p = sourceRecord(dataset, "paylocity", employee.id)!;
-            const hasIssue = exceptions.some(
+            const visibleIssue = exceptions.find(
               (item) => item.employeeId === employee.id && exceptionAppliesToFilter(item, sourceFilter)
             );
+            const hasIssue = Boolean(visibleIssue);
             const hour = (record: typeof r) => record.sourceApplicable === false
               ? "Not expected"
               : record.checkCreated === false
@@ -885,6 +886,7 @@ function EmployeeTable({
                   <span className={hasIssue ? "rowStatus review" : "rowStatus matched"}>
                     {hasIssue ? "Needs review" : "Reconciled"}
                   </span>
+                  {visibleIssue && <small>{visibleIssue.title}</small>}
                 </td>
               </tr>
             );
@@ -915,13 +917,16 @@ function EmployeeDrawer({
   const issue = exceptions.find((item) => item.employeeId === employee.id);
   const rakenValue = (value: string | number) =>
     r.sourceApplicable === false ? "Not expected" : value;
-  const rows: Array<[string, string | number, string | number, string | number]> = [
-    ["Regular", rakenValue(r.regularHours), j.regularHours, p.regularHours],
-    ["Overtime", rakenValue(r.overtimeHours), j.overtimeHours, p.overtimeHours],
-    ["PTO", rakenValue(r.ptoHours), j.ptoHours, p.ptoHours],
-    ["Per diem", rakenValue(`$${r.perDiem}`), `$${j.perDiem}`, `$${p.perDiem}`],
-    ["Rate", rakenValue(`$${r.rate.toFixed(2)}`), `$${j.rate.toFixed(2)}`, `$${p.rate.toFixed(2)}`],
-    ["Cost code", rakenValue(r.costCode), j.costCode, p.costCode],
+  const paylocityValue = (value: string | number) =>
+    p.checkCreated === false ? "No check" : value;
+  type DetailComparison = "all" | "raken-jonas" | "jonas-paylocity";
+  const rows: Array<[string, string | number, string | number, string | number, DetailComparison]> = [
+    ["Regular", rakenValue(r.regularHours), j.regularHours, paylocityValue(p.regularHours), "all"],
+    ["Overtime", rakenValue(r.overtimeHours), j.overtimeHours, paylocityValue(p.overtimeHours), "all"],
+    ["PTO", rakenValue(r.ptoHours), j.ptoHours, paylocityValue(p.ptoHours), "all"],
+    ["Per diem", rakenValue(`$${r.perDiem}`), `$${j.perDiem}`, paylocityValue(`$${p.perDiem}`), "all"],
+    ["Rate", "Not compared", `$${j.rate.toFixed(2)}`, paylocityValue(`$${p.rate.toFixed(2)}`), "jonas-paylocity"],
+    ["Cost code", rakenValue(r.costCode), j.costCode, "Not compared", "raken-jonas"],
   ];
 
   return (
@@ -951,11 +956,18 @@ function EmployeeDrawer({
           </div>
           <table className="detailTable">
             <thead>
-              <tr><th>Metric</th><th>Raken</th><th>Jonas</th><th>Paylocity</th></tr>
+              <tr><th>Metric</th><th>Raken</th><th>Jonas</th><th>Paylocity</th><th>Result</th></tr>
             </thead>
             <tbody>
-              {rows.map(([label, a, b, c]) => {
-                const ok = a === "Not expected" ? b === c : a === b && b === c;
+              {rows.map(([label, a, b, c, comparison]) => {
+                const ok =
+                  comparison === "raken-jonas"
+                    ? a === "Not expected" || a === b
+                    : comparison === "jonas-paylocity"
+                      ? b === c
+                      : a === "Not expected"
+                        ? b === c
+                        : a === b && b === c;
                 return (
                   <tr key={label}>
                     <td>{label}</td>
@@ -999,7 +1011,7 @@ function EmployeeDrawer({
             <div className="traceArrow">↓</div>
             <div className="traceNode paylocityNode">
               <SourceBadge source="paylocity" />
-              <strong>{p.checkCreated === false ? "No check found" : "Check representation"}</strong>
+              <strong>{p.checkCreated === false ? "Difference first appears here · no check found" : issue?.boundary === "Jonas → Paylocity" ? "Difference first appears here" : "Check representation"}</strong>
               <span>{p.checkCreated === false ? "Critical exception" : `${p.regularHours + p.overtimeHours + p.ptoHours} total hours`}</span>
             </div>
           </div>
@@ -1008,9 +1020,9 @@ function EmployeeDrawer({
             <div className="resolutionBar">
               <div>
                 <strong>{issue.detail}</strong>
-                <span>The demo aligns the synthetic downstream value and re-runs reconciliation. Production would require correcting the authoritative source or documenting an approved exception, then re-syncing.</span>
+                <span>This action changes synthetic demo data only; it does not modify Raken, Jonas, Paylocity, approve payroll, or submit payroll. Production would require correcting the authoritative source or documenting an approved exception, then re-syncing.</span>
               </div>
-              <button className="primaryButton" onClick={() => onResolve(issue)}>Simulate correction</button>
+              <button className="primaryButton" onClick={() => onResolve(issue)}>Simulate demo correction</button>
             </div>
           )}
         </div>
@@ -1032,14 +1044,14 @@ function IntegrationCard({
     <article className="integrationCard">
       <div className="integrationTop">
         <SourceBadge source={source} />
-        <span className="connectedTag">Connected · Demo</span>
+        <span className="connectedTag">Simulated · Available</span>
       </div>
       <dl>
-        <div><dt>Method</dt><dd>{method}</dd></div>
+        <div><dt>Planned path</dt><dd>{method}</dd></div>
         <div><dt>Access</dt><dd>{access}</dd></div>
         <div><dt>Last sync</dt><dd>8:0{source === "raken" ? "4" : source === "jonas" ? "6" : "8"} AM</dd></div>
       </dl>
-      <button className="secondaryButton fullWidth">Test demo connection</button>
+
     </article>
   );
 }

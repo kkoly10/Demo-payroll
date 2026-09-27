@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { buildDemoDataset } from "@/data/demo";
 import {
   employeeHasUnresolvedException,
@@ -47,42 +47,145 @@ function InfoHint({
   label: string;
   children: React.ReactNode;
 }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
   return (
-    <details className="infoHint">
-      <summary aria-label={label}>i</summary>
-      <div className="infoPopover" role="note">
-        {children}
-      </div>
-    </details>
+    <div className="infoHint" ref={rootRef}>
+      <button
+        type="button"
+        className="infoTrigger"
+        aria-label={label}
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        i
+      </button>
+      {open && (
+        <div className="infoPopover" role="note">
+          <button
+            type="button"
+            className="popoverClose"
+            aria-label="Close guidance"
+            onClick={() => setOpen(false)}
+          >
+            ×
+          </button>
+          <div className="infoPopoverBody">{children}</div>
+        </div>
+      )}
+    </div>
   );
 }
 
 function HelpGuide() {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
   return (
-    <details className="helpGuide">
-      <summary>
+    <>
+      <button
+        type="button"
+        className="helpGuideButton"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+      >
         <span className="helpIcon">i</span>
-        How to read this
-      </summary>
-      <div className="helpGuidePanel">
-        <div>
-          <strong>Start with exceptions.</strong>
-          <span>They are the employees or payroll components that do not currently agree across the available sources.</span>
+        Quick guide
+      </button>
+      {open && (
+        <div className="guideBackdrop" onMouseDown={() => setOpen(false)}>
+          <aside
+            className="guidePanel"
+            aria-label="How to read Reconciliation"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="guidePanelHeader">
+              <div>
+                <p className="sectionKicker">Quick guide</p>
+                <h2>How to read Reconciliation</h2>
+              </div>
+              <button
+                type="button"
+                className="iconButton"
+                aria-label="Close quick guide"
+                onClick={() => setOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="guideLead">
+              <strong>Purpose</strong>
+              <span>Verify that payroll data stays consistent as it moves through the systems, then focus people only on the items that need judgment.</span>
+            </div>
+
+            <div className="guideSteps">
+              <div>
+                <span className="guideNumber">1</span>
+                <div>
+                  <strong>Start with exceptions.</strong>
+                  <span>These are employees or payroll components that do not currently agree across the compared sources.</span>
+                </div>
+              </div>
+              <div>
+                <span className="guideNumber">2</span>
+                <div>
+                  <strong>Trace before correcting.</strong>
+                  <span>Trace shows where the values first stop matching so Payroll can investigate the right handoff.</span>
+                </div>
+              </div>
+              <div>
+                <span className="guideNumber">3</span>
+                <div>
+                  <strong>Use View all for reassurance.</strong>
+                  <span>Every employee remains available for spot-checking or full manual review.</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="guideSourceLegend">
+              <div><SourceBadge source="raken" /><span>Field time & project context</span></div>
+              <div><SourceBadge source="jonas" /><span>Payroll, accounting & job cost</span></div>
+              <div><SourceBadge source="paylocity" /><span>Employee checks & payroll processing</span></div>
+            </div>
+
+            <div className="guideCaution">
+              <strong>Reconciled ≠ submitted.</strong>
+              <span>It means the compared values agree. Payroll approval and submission remain separate controlled actions.</span>
+            </div>
+
+            <button className="primaryButton fullWidth" onClick={() => setOpen(false)}>
+              Got it
+            </button>
+          </aside>
         </div>
-        <div>
-          <strong>Use View all for reassurance.</strong>
-          <span>You can inspect every employee at any time—even employees the system considers fully reconciled.</span>
-        </div>
-        <div>
-          <strong>Colors identify source, not status.</strong>
-          <span><b className="rakenText">Raken</b> = field time, <b className="jonasText">Jonas</b> = payroll/job cost, <b className="paylocityText">Paylocity</b> = employee check/payroll representation. Not every employee is expected in every source; salary payroll does not originate in Raken.</span>
-        </div>
-        <div>
-          <strong>Reconciled does not mean submitted.</strong>
-          <span>It means the compared values agree. Payroll approval and submission remain separate controlled steps.</span>
-        </div>
-      </div>
-    </details>
+      )}
+    </>
   );
 }
 
@@ -166,8 +269,15 @@ export default function ReconciliationApp() {
     () => applyDemoCorrections(baseDataset, resolved, originalExceptions),
     [baseDataset, resolved, originalExceptions]
   );
-  const exceptions = useMemo(() => reconcile(dataset), [dataset]);
+  const exceptions = useMemo(
+    () => reconcile(dataset).sort((a, b) => {
+      if (a.severity !== b.severity) return a.severity === "critical" ? -1 : 1;
+      return a.title.localeCompare(b.title);
+    }),
+    [dataset]
+  );
   const unresolved = exceptions;
+  const criticalCount = unresolved.filter((item) => item.severity === "critical").length;
   const matchedCount = dataset.employees.filter(
     (employee) => !employeeHasUnresolvedException(employee.id, exceptions, new Set())
   ).length;
@@ -274,7 +384,10 @@ export default function ReconciliationApp() {
             READ ONLY
           </div>
           <p>Synthetic demo environment</p>
-          <button className="resetLink" onClick={resetDemo}>Reset demo</button>
+          <div className="demoControlLinks">
+            <button className="resetLink" onClick={simulateSync}>Refresh demo data</button>
+            <button className="resetLink" onClick={resetDemo}>Reset demo</button>
+          </div>
         </div>
       </aside>
 
@@ -288,12 +401,19 @@ export default function ReconciliationApp() {
           <div className="topActions">
             <HelpGuide />
             <span className="demoNotice">DEMO · Synthetic data only</span>
-            <button className="secondaryButton" onClick={simulateSync}>Simulate sync</button>
           </div>
         </header>
 
         {view === "overview" && (
           <section className="pageStack">
+            <div className="overviewPurpose">
+              <div>
+                <span className="purposeLabel">What this view answers</span>
+                <strong>Does this pay period agree across the systems, and what needs human review?</strong>
+              </div>
+              <span className="purposePath"><b className="rakenText">Raken</b><i>→</i><b className="jonasText">Jonas</b><i>→</i><b className="paylocityText">Paylocity</b></span>
+            </div>
+
             <div className="statusHero">
               <div>
                 <div className="kickerWithInfo">
@@ -308,6 +428,14 @@ export default function ReconciliationApp() {
                 </div>
                 <p className="heroCopy">
                   {matchedCount} of {dataset.employees.length} employees fully reconcile across the available sources. No payroll change happens from this screen.
+                </p>
+                <div className="heroStats" aria-label="Payroll reconciliation summary">
+                  <div><strong>{matchedCount}</strong><span>Reconciled</span></div>
+                  <div><strong>{unresolved.length}</strong><span>Needs review</span></div>
+                  <div className={criticalCount ? "heroStatCritical" : ""}><strong>{criticalCount}</strong><span>Critical</span></div>
+                </div>
+                <p className="nextAction">
+                  <strong>Next:</strong> review the {unresolved.length} exceptions. Use <em>View all employees</em> whenever you want to independently spot-check the full payroll.
                 </p>
               </div>
               <div className="heroActions">
@@ -407,7 +535,7 @@ export default function ReconciliationApp() {
                       <p className="exceptionDetail">{item.detail}</p>
                     </div>
                     <div className="boundaryWithInfo">
-                      <div className="boundaryChip">{item.boundary}</div>
+                      <div className="boundaryChip">First mismatch · {item.boundary}</div>
                       <InfoHint label="What does boundary mean?">
                         The boundary is the first transition where the compared values stop agreeing. It helps narrow investigation, but it does not by itself prove the root cause.
                       </InfoHint>
@@ -572,21 +700,22 @@ function PageHeading({
 
 function SourceHealth({ syncTick }: { syncTick: number }) {
   const time = syncTick ? "just now" : undefined;
-  const items: Array<[SourceName, string]> = [
-    ["raken", time ?? "8:04 AM"],
-    ["jonas", time ?? "8:06 AM"],
-    ["paylocity", time ?? "8:08 AM"],
+  const items: Array<[SourceName, string, string]> = [
+    ["raken", time ?? "8:04 AM", "Field time & project context"],
+    ["jonas", time ?? "8:06 AM", "Payroll, accounting & job cost"],
+    ["paylocity", time ?? "8:08 AM", "Employee checks & payroll"],
   ];
 
   return (
     <div className="sourceHealth">
-      {items.map(([source, synced]) => (
+      {items.map(([source, synced, role]) => (
         <div className="sourceHealthItem" key={source}>
           <SourceBadge source={source} />
-          <div>
-            <strong>Demo connection</strong>
-            <span>Snapshot {synced}</span>
+          <div className="sourceHealthCopy">
+            <strong>{role}</strong>
+            <span>Demo snapshot · {synced}</span>
           </div>
+          <span className="sourceReady">Available</span>
         </div>
       ))}
     </div>
@@ -852,7 +981,7 @@ function EmployeeDrawer({
               </div>
               <h3>{issue ? issue.title : "Source path verified"}</h3>
             </div>
-            {issue && <span className="boundaryChip">{issue.boundary}</span>}
+            {issue && <span className="boundaryChip">First mismatch · {issue.boundary}</span>}
           </div>
 
           <div className="traceFlow">

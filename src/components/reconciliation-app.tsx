@@ -40,9 +40,118 @@ function StatusMark({ ok }: { ok: boolean }) {
   return <span className={ok ? "statusOk" : "statusWarn"}>{ok ? "✓" : "!"}</span>;
 }
 
+function InfoHint({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details className="infoHint">
+      <summary aria-label={label}>i</summary>
+      <div className="infoPopover" role="note">
+        {children}
+      </div>
+    </details>
+  );
+}
+
+function HelpGuide() {
+  return (
+    <details className="helpGuide">
+      <summary>
+        <span className="helpIcon">i</span>
+        How to read this
+      </summary>
+      <div className="helpGuidePanel">
+        <div>
+          <strong>Start with exceptions.</strong>
+          <span>They are the employees or payroll components that do not currently agree across the available sources.</span>
+        </div>
+        <div>
+          <strong>Use View all for reassurance.</strong>
+          <span>You can inspect every employee at any time—even employees the system considers fully reconciled.</span>
+        </div>
+        <div>
+          <strong>Colors identify source, not status.</strong>
+          <span><b className="rakenText">Raken</b> = field time, <b className="jonasText">Jonas</b> = payroll/job cost, <b className="paylocityText">Paylocity</b> = employee check/payroll representation. Not every employee is expected in every source; salary payroll does not originate in Raken.</span>
+        </div>
+        <div>
+          <strong>Reconciled does not mean submitted.</strong>
+          <span>It means the compared values agree. Payroll approval and submission remain separate controlled steps.</span>
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function exceptionAppliesToFilter(item: PayrollException, filter: SourceFilter) {
+  if (filter === "all") return true;
+  if (filter === "raken-jonas") return item.boundary === "Raken → Jonas";
+  return item.boundary === "Jonas → Paylocity";
+}
+
+function applyDemoCorrections(
+  base: ReturnType<typeof buildDemoDataset>,
+  resolvedIds: Set<string>,
+  originalExceptions: PayrollException[]
+) {
+  const copy = {
+    employees: base.employees.map((employee) => ({ ...employee })),
+    raken: base.raken.map((row) => ({ ...row })),
+    jonas: base.jonas.map((row) => ({ ...row })),
+    paylocity: base.paylocity.map((row) => ({ ...row })),
+  };
+
+  const get = (rows: typeof copy.raken, id: string) =>
+    rows.find((row) => row.employeeId === id)!;
+
+  for (const item of originalExceptions) {
+    if (!resolvedIds.has(item.id)) continue;
+    const r = get(copy.raken, item.employeeId);
+    const j = get(copy.jonas, item.employeeId);
+    const p = get(copy.paylocity, item.employeeId);
+
+    if (item.kind === "missing-check") {
+      p.checkCreated = true;
+      p.regularHours = j.regularHours;
+      p.overtimeHours = j.overtimeHours;
+      p.ptoHours = j.ptoHours;
+      p.perDiem = j.perDiem;
+      p.rate = j.rate;
+      p.costCode = j.costCode;
+      continue;
+    }
+
+    const keyByKind = {
+      "regular-hours": "regularHours",
+      overtime: "overtimeHours",
+      pto: "ptoHours",
+      "per-diem": "perDiem",
+      rate: "rate",
+      "cost-code": "costCode",
+    } as const;
+    const key = keyByKind[item.kind as keyof typeof keyByKind];
+    if (!key) continue;
+
+    if (item.boundary === "Raken → Jonas") {
+      (j as unknown as Record<string, string | number>)[key] =
+        (r as unknown as Record<string, string | number>)[key];
+      (p as unknown as Record<string, string | number>)[key] =
+        (r as unknown as Record<string, string | number>)[key];
+    } else {
+      (p as unknown as Record<string, string | number>)[key] =
+        (j as unknown as Record<string, string | number>)[key];
+    }
+  }
+
+  return copy;
+}
+
 export default function ReconciliationApp() {
-  const dataset = useMemo(() => buildDemoDataset(), []);
-  const exceptions = useMemo(() => reconcile(dataset), [dataset]);
+  const baseDataset = useMemo(() => buildDemoDataset(), []);
+  const originalExceptions = useMemo(() => reconcile(baseDataset), [baseDataset]);
 
   const [view, setView] = useState<View>("overview");
   const [resolved, setResolved] = useState<Set<string>>(new Set());
@@ -53,24 +162,34 @@ export default function ReconciliationApp() {
   const [audit, setAudit] = useState(initialAudit);
   const [syncTick, setSyncTick] = useState(0);
 
-  const unresolved = exceptions.filter((item) => !resolved.has(item.id));
+  const dataset = useMemo(
+    () => applyDemoCorrections(baseDataset, resolved, originalExceptions),
+    [baseDataset, resolved, originalExceptions]
+  );
+  const exceptions = useMemo(() => reconcile(dataset), [dataset]);
+  const unresolved = exceptions;
   const matchedCount = dataset.employees.filter(
-    (employee) => !employeeHasUnresolvedException(employee.id, exceptions, resolved)
+    (employee) => !employeeHasUnresolvedException(employee.id, exceptions, new Set())
   ).length;
 
   const filteredEmployees = dataset.employees.filter((employee) => {
     const matches = employee.name.toLowerCase().includes(search.toLowerCase()) ||
       employee.id.toLowerCase().includes(search.toLowerCase()) ||
       employee.jonasId.toLowerCase().includes(search.toLowerCase());
-    const hasIssue = employeeHasUnresolvedException(employee.id, exceptions, resolved);
+    const hasIssue = exceptions.some(
+      (item) => item.employeeId === employee.id && exceptionAppliesToFilter(item, sourceFilter)
+    );
     return matches && (!onlyDifferences || hasIssue);
   });
 
   const resolveException = (item: PayrollException) => {
-    setResolved((current) => new Set([...current, item.id]));
+    const original = originalExceptions.find(
+      (candidate) => candidate.employeeId === item.employeeId && candidate.kind === item.kind
+    ) ?? item;
+    setResolved((current) => new Set([...current, original.id]));
     const employee = dataset.employees.find((e) => e.id === item.employeeId);
     setAudit((current) => [
-      `${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${item.title} resolved for ${employee?.name ?? item.employeeId}`,
+      `${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · Demo correction applied for ${employee?.name ?? item.employeeId}: ${item.title}`,
       ...current,
     ]);
   };
@@ -98,8 +217,9 @@ export default function ReconciliationApp() {
       payrollPeriod: "Sep 20–Sep 26, 2026",
       generatedAt: new Date().toISOString(),
       dataset,
-      exceptions,
-      resolvedExceptionIds: Array.from(resolved),
+      currentExceptions: exceptions,
+      originalExceptions,
+      simulatedCorrectionIds: Array.from(resolved),
       audit,
     };
     const blob = new Blob([JSON.stringify(packet, null, 2)], { type: "application/json" });
@@ -163,8 +283,10 @@ export default function ReconciliationApp() {
           <div>
             <p className="eyebrow">Weekly payroll</p>
             <h1>Sep 20 – Sep 26, 2026</h1>
+            <p className="topbarPurpose">Compare the same payroll across Raken, Jonas, and Paylocity before approval.</p>
           </div>
           <div className="topActions">
+            <HelpGuide />
             <span className="demoNotice">DEMO · Synthetic data only</span>
             <button className="secondaryButton" onClick={simulateSync}>Simulate sync</button>
           </div>
@@ -174,13 +296,18 @@ export default function ReconciliationApp() {
           <section className="pageStack">
             <div className="statusHero">
               <div>
-                <p className="sectionKicker">Payroll status</p>
+                <div className="kickerWithInfo">
+                  <p className="sectionKicker">Payroll status</p>
+                  <InfoHint label="What does payroll status mean?">
+                    <strong>Needs review</strong> means at least one compared value does not agree. <strong>Ready for approval</strong> means the available comparisons pass; it does not submit payroll.
+                  </InfoHint>
+                </div>
                 <div className="heroStatusRow">
                   <span className={unresolved.length ? "heroSignal warning" : "heroSignal success"} />
                   <h2>{unresolved.length ? "Needs review" : "Ready for approval"}</h2>
                 </div>
                 <p className="heroCopy">
-                  {matchedCount} of {dataset.employees.length} employees fully reconcile across the available sources.
+                  {matchedCount} of {dataset.employees.length} employees fully reconcile across the available sources. No payroll change happens from this screen.
                 </p>
               </div>
               <div className="heroActions">
@@ -193,8 +320,31 @@ export default function ReconciliationApp() {
               </div>
             </div>
 
+            <div className="sectionLabelRow">
+              <div>
+                <span>Source health</span>
+                <InfoHint label="What are these sources?">
+                  <div className="sourceHelpRows">
+                    <p><b className="rakenText">Raken</b> supplies field time and project/cost context.</p>
+                    <p><b className="jonasText">Jonas</b> represents construction payroll, accounting, and job-cost allocation.</p>
+                    <p><b className="paylocityText">Paylocity</b> represents employee payroll/check data used for payroll processing.</p>
+                    <p>If a required source is stale or unavailable, production should block an automated ready state and point Payroll to the manual fallback.</p>
+                  </div>
+                </InfoHint>
+              </div>
+              <small>Colors stay consistent everywhere in the app.</small>
+            </div>
             <SourceHealth syncTick={syncTick} />
 
+            <div className="sectionLabelRow compactLabel">
+              <div>
+                <span>Payroll journey</span>
+                <InfoHint label="How do I read the payroll journey?">
+                  This shows where the pay period sits in the workflow. A completed step means its demo check has passed; the highlighted step is where attention is currently focused.
+                </InfoHint>
+              </div>
+              <small>Current stage: {unresolved.length ? "Reconcile" : "Approve"}</small>
+            </div>
             <Workflow unresolved={unresolved.length} />
 
             <div className="twoColumn">
@@ -208,7 +358,12 @@ export default function ReconciliationApp() {
 
             <div className="fallbackStrip">
               <div>
-                <strong>Manual controls remain available.</strong>
+                <div className="inlineTitleWithInfo">
+                  <strong>Manual controls remain available.</strong>
+                  <InfoHint label="What is the fallback?">
+                    Reconciliation should never trap Payroll inside automation. If a connection is unavailable or someone wants independent reassurance, they can inspect all employees, compare source pairs, export the source packet, and continue the established manual process.
+                  </InfoHint>
+                </div>
                 <span>Inspect every employee, compare source-to-source, or export the synthetic fallback packet.</span>
               </div>
               <button className="secondaryButton" onClick={downloadManualPacket}>Export manual packet</button>
@@ -220,8 +375,15 @@ export default function ReconciliationApp() {
           <section className="pageStack">
             <PageHeading
               title="Exception queue"
-              description="Only unresolved differences are prioritized here. The complete employee population remains one click away."
-              action={<button className="secondaryButton" onClick={() => setView("employees")}>View all employees</button>}
+              description="Only unresolved differences are prioritized here. A boundary shows where values first stop matching—not a proven root cause. The complete employee population remains one click away."
+              action={
+                <div className="headingActions">
+                  <InfoHint label="What should I do with an exception?">
+                    Open <strong>Trace</strong> to inspect the source values. <strong>Simulate correction</strong> changes only the synthetic demo copy and re-runs reconciliation. Production would correct the authoritative source or record an approved exception, then synchronize again.
+                  </InfoHint>
+                  <button className="secondaryButton" onClick={() => setView("employees")}>View all employees</button>
+                </div>
+              }
             />
             <div className="exceptionList">
               {unresolved.length === 0 ? (
@@ -244,10 +406,15 @@ export default function ReconciliationApp() {
                       </div>
                       <p className="exceptionDetail">{item.detail}</p>
                     </div>
-                    <div className="boundaryChip">{item.boundary}</div>
+                    <div className="boundaryWithInfo">
+                      <div className="boundaryChip">{item.boundary}</div>
+                      <InfoHint label="What does boundary mean?">
+                        The boundary is the first transition where the compared values stop agreeing. It helps narrow investigation, but it does not by itself prove the root cause.
+                      </InfoHint>
+                    </div>
                     <div className="rowActions">
                       <button className="textButton" onClick={() => setSelectedEmployee(employee)}>Trace</button>
-                      <button className="secondaryButton compact" onClick={() => resolveException(item)}>Resolve demo</button>
+                      <button className="secondaryButton compact" onClick={() => resolveException(item)}>Simulate correction</button>
                     </div>
                   </article>
                 );
@@ -261,7 +428,14 @@ export default function ReconciliationApp() {
             <PageHeading
               title="All employees"
               description="Full manual visibility is always available. Search, filter, and inspect reconciled employees as well as exceptions."
-              action={<button className="secondaryButton" onClick={downloadManualPacket}>Export source packet</button>}
+              action={
+                <div className="headingActions">
+                  <InfoHint label="Why view all employees?">
+                    This is the manual reassurance path. Use it to spot-check the system, inspect a fully reconciled employee, or compare only Raken ↔ Jonas or Jonas ↔ Paylocity.
+                  </InfoHint>
+                  <button className="secondaryButton" onClick={downloadManualPacket}>Export source packet</button>
+                </div>
+              }
             />
 
             <div className="filterBar">
@@ -275,7 +449,8 @@ export default function ReconciliationApp() {
                 />
               </div>
 
-              <div className="segmented" aria-label="Source comparison">
+              <div className="filterWithHint">
+                <div className="segmented" aria-label="Source comparison">
                 {([
                   ["all", "All 3"],
                   ["raken-jonas", "Raken ↔ Jonas"],
@@ -289,6 +464,10 @@ export default function ReconciliationApp() {
                     {label}
                   </button>
                 ))}
+                </div>
+                <InfoHint label="What do source filters do?">
+                  <strong>All 3</strong> shows the full chain. <strong>Raken ↔ Jonas</strong> checks whether field time made it into payroll/job cost correctly. <strong>Jonas ↔ Paylocity</strong> checks whether prepared payroll made it into employee checks correctly.
+                </InfoHint>
               </div>
 
               <label className="checkControl">
@@ -305,7 +484,6 @@ export default function ReconciliationApp() {
               employees={filteredEmployees}
               dataset={dataset}
               exceptions={exceptions}
-              resolved={resolved}
               sourceFilter={sourceFilter}
               onSelect={setSelectedEmployee}
             />
@@ -316,7 +494,7 @@ export default function ReconciliationApp() {
           <section className="pageStack">
             <PageHeading
               title="Audit trail"
-              description="Every demo synchronization, resolution, and fallback action is visible here."
+              description="Every demo synchronization, resolution, and fallback action is visible here. Production would persist this history server-side so payroll decisions remain traceable."
             />
             <div className="auditPanel">
               {audit.map((entry, index) => (
@@ -333,7 +511,7 @@ export default function ReconciliationApp() {
           <section className="pageStack">
             <PageHeading
               title="Integrations"
-              description="Payroll users would not configure these. This administration view demonstrates the intended production separation."
+              description="Payroll users would not configure these. IT manages connections in the background; Payroll should open the app and see current information already available."
             />
             <div className="integrationGrid">
               <IntegrationCard source="raken" method="Public API / approved export" access="Read only" />
@@ -364,7 +542,6 @@ export default function ReconciliationApp() {
           employee={selectedEmployee}
           dataset={dataset}
           exceptions={exceptions}
-          resolved={resolved}
           onResolve={resolveException}
           onClose={() => setSelectedEmployee(null)}
         />
@@ -407,8 +584,8 @@ function SourceHealth({ syncTick }: { syncTick: number }) {
         <div className="sourceHealthItem" key={source}>
           <SourceBadge source={source} />
           <div>
-            <strong>Connected</strong>
-            <span>Synced {synced}</span>
+            <strong>Demo connection</strong>
+            <span>Snapshot {synced}</span>
           </div>
         </div>
       ))}
@@ -476,9 +653,12 @@ function ExceptionSummary({
 }
 
 function TotalsPanel({ dataset }: { dataset: ReturnType<typeof buildDemoDataset> }) {
-  const r = totals(dataset.raken);
-  const j = totals(dataset.jonas);
-  const p = totals(dataset.paylocity);
+  const commonIds = new Set(
+    dataset.raken.filter((row) => row.sourceApplicable !== false).map((row) => row.employeeId)
+  );
+  const r = totals(dataset.raken.filter((row) => commonIds.has(row.employeeId)));
+  const j = totals(dataset.jonas.filter((row) => commonIds.has(row.employeeId)));
+  const p = totals(dataset.paylocity.filter((row) => commonIds.has(row.employeeId)));
   const rows = [
     ["Regular", r.regular, j.regular, p.regular],
     ["Overtime", r.overtime, j.overtime, p.overtime],
@@ -490,7 +670,12 @@ function TotalsPanel({ dataset }: { dataset: ReturnType<typeof buildDemoDataset>
     <div className="panel">
       <div className="panelHeader">
         <div>
-          <p className="sectionKicker">Three-way totals</p>
+          <div className="kickerWithInfo">
+            <p className="sectionKicker">Three-way totals</p>
+            <InfoHint label="How should I use these totals?">
+              Totals are a quick control, not enough by themselves. This demo uses employees expected across all three sources; salary-only paths are excluded. Two employee-level errors can offset each other while the grand total still matches.
+            </InfoHint>
+          </div>
           <h3>Source comparison</h3>
         </div>
       </div>
@@ -522,14 +707,12 @@ function EmployeeTable({
   employees,
   dataset,
   exceptions,
-  resolved,
   sourceFilter,
   onSelect,
 }: {
   employees: Employee[];
   dataset: ReturnType<typeof buildDemoDataset>;
   exceptions: PayrollException[];
-  resolved: Set<string>;
   sourceFilter: SourceFilter;
   onSelect: (employee: Employee) => void;
 }) {
@@ -551,10 +734,14 @@ function EmployeeTable({
             const r = sourceRecord(dataset, "raken", employee.id)!;
             const j = sourceRecord(dataset, "jonas", employee.id)!;
             const p = sourceRecord(dataset, "paylocity", employee.id)!;
-            const hasIssue = employeeHasUnresolvedException(employee.id, exceptions, resolved);
-            const hour = (record: typeof r) => record.checkCreated === false
-              ? "No check"
-              : `${record.regularHours + record.overtimeHours + record.ptoHours} hrs`;
+            const hasIssue = exceptions.some(
+              (item) => item.employeeId === employee.id && exceptionAppliesToFilter(item, sourceFilter)
+            );
+            const hour = (record: typeof r) => record.sourceApplicable === false
+              ? "Not expected"
+              : record.checkCreated === false
+                ? "No check"
+                : `${record.regularHours + record.overtimeHours + record.ptoHours} hrs`;
             return (
               <tr key={employee.id} onClick={() => onSelect(employee)} tabIndex={0} role="button">
                 <td>
@@ -584,28 +771,28 @@ function EmployeeDrawer({
   employee,
   dataset,
   exceptions,
-  resolved,
   onResolve,
   onClose,
 }: {
   employee: Employee;
   dataset: ReturnType<typeof buildDemoDataset>;
   exceptions: PayrollException[];
-  resolved: Set<string>;
   onResolve: (item: PayrollException) => void;
   onClose: () => void;
 }) {
   const r = sourceRecord(dataset, "raken", employee.id)!;
   const j = sourceRecord(dataset, "jonas", employee.id)!;
   const p = sourceRecord(dataset, "paylocity", employee.id)!;
-  const issue = exceptions.find((item) => item.employeeId === employee.id && !resolved.has(item.id));
+  const issue = exceptions.find((item) => item.employeeId === employee.id);
+  const rakenValue = (value: string | number) =>
+    r.sourceApplicable === false ? "Not expected" : value;
   const rows: Array<[string, string | number, string | number, string | number]> = [
-    ["Regular", r.regularHours, j.regularHours, p.regularHours],
-    ["Overtime", r.overtimeHours, j.overtimeHours, p.overtimeHours],
-    ["PTO", r.ptoHours, j.ptoHours, p.ptoHours],
-    ["Per diem", `$${r.perDiem}`, `$${j.perDiem}`, `$${p.perDiem}`],
-    ["Rate", `$${r.rate.toFixed(2)}`, `$${j.rate.toFixed(2)}`, `$${p.rate.toFixed(2)}`],
-    ["Cost code", r.costCode, j.costCode, p.costCode],
+    ["Regular", rakenValue(r.regularHours), j.regularHours, p.regularHours],
+    ["Overtime", rakenValue(r.overtimeHours), j.overtimeHours, p.overtimeHours],
+    ["PTO", rakenValue(r.ptoHours), j.ptoHours, p.ptoHours],
+    ["Per diem", rakenValue(`$${r.perDiem}`), `$${j.perDiem}`, `$${p.perDiem}`],
+    ["Rate", rakenValue(`$${r.rate.toFixed(2)}`), `$${j.rate.toFixed(2)}`, `$${p.rate.toFixed(2)}`],
+    ["Cost code", rakenValue(r.costCode), j.costCode, p.costCode],
   ];
 
   return (
@@ -639,7 +826,7 @@ function EmployeeDrawer({
             </thead>
             <tbody>
               {rows.map(([label, a, b, c]) => {
-                const ok = a === b && b === c;
+                const ok = a === "Not expected" ? b === c : a === b && b === c;
                 return (
                   <tr key={label}>
                     <td>{label}</td>
@@ -657,7 +844,12 @@ function EmployeeDrawer({
         <div className="drawerSection traceCard">
           <div className="traceHeading">
             <div>
-              <p className="sectionKicker">Trace this employee</p>
+              <div className="kickerWithInfo">
+                <p className="sectionKicker">Trace this employee</p>
+                <InfoHint label="What does Trace show?">
+                  Trace follows the same employee through the source systems and highlights where values first diverge. It is evidence for investigation, not an automatic payroll correction.
+                </InfoHint>
+              </div>
               <h3>{issue ? issue.title : "Source path verified"}</h3>
             </div>
             {issue && <span className="boundaryChip">{issue.boundary}</span>}
@@ -666,8 +858,8 @@ function EmployeeDrawer({
           <div className="traceFlow">
             <div className="traceNode rakenNode">
               <SourceBadge source="raken" />
-              <strong>{issue?.boundary === "Raken → Jonas" ? "Source value" : "Field record"}</strong>
-              <span>{r.regularHours + r.overtimeHours + r.ptoHours} total hours · job {r.project}</span>
+              <strong>{r.sourceApplicable === false ? "Not part of this employee path" : issue?.boundary === "Raken → Jonas" ? "Source value" : "Field record"}</strong>
+              <span>{r.sourceApplicable === false ? "Salary payroll does not originate in Raken." : `${r.regularHours + r.overtimeHours + r.ptoHours} total hours · job ${r.project}`}</span>
             </div>
             <div className="traceArrow">↓</div>
             <div className="traceNode jonasNode">
@@ -687,9 +879,9 @@ function EmployeeDrawer({
             <div className="resolutionBar">
               <div>
                 <strong>{issue.detail}</strong>
-                <span>Demo resolution records the action but performs no external write.</span>
+                <span>The demo aligns the synthetic downstream value and re-runs reconciliation. Production would require correcting the authoritative source or documenting an approved exception, then re-syncing.</span>
               </div>
-              <button className="primaryButton" onClick={() => onResolve(issue)}>Resolve demo exception</button>
+              <button className="primaryButton" onClick={() => onResolve(issue)}>Simulate correction</button>
             </div>
           )}
         </div>

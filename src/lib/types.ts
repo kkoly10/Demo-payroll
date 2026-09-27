@@ -10,6 +10,7 @@ export type PayrollRecord = {
   project: string;
   costCode: string;
   checkCreated?: boolean;
+  sourceApplicable?: boolean;
 };
 
 export type Employee = {

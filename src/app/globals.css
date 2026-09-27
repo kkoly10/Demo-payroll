@@ -1116,3 +1116,241 @@ button:focus-visible, input:focus-visible, tr[role="button"]:focus-visible {
   .tablePanel { overflow-x: auto; }
   .employeeTable { min-width: 720px; }
 }
+
+/* Contextual guidance */
+.topbarPurpose {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.kickerWithInfo,
+.inlineTitleWithInfo,
+.sectionLabelRow > div,
+.headingActions,
+.boundaryWithInfo,
+.filterWithHint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.sectionLabelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: -10px;
+  padding: 0 2px;
+}
+
+.sectionLabelRow.compactLabel {
+  margin-top: 2px;
+}
+
+.sectionLabelRow > div > span:first-child {
+  color: #4e5965;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sectionLabelRow small {
+  color: #7b8590;
+  font-size: 10px;
+}
+
+.infoHint {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.infoHint > summary {
+  list-style: none;
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #cbd2d9;
+  border-radius: 50%;
+  color: #66717c;
+  background: #fff;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.infoHint > summary::-webkit-details-marker {
+  display: none;
+}
+
+.infoHint > summary:hover,
+.infoHint[open] > summary,
+.infoHint > summary:focus-visible {
+  color: #242c34;
+  border-color: #9ea8b3;
+  background: #f5f7f9;
+}
+
+.infoPopover {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(320px, 70vw);
+  padding: 11px 12px;
+  color: #35404b;
+  background: #fff;
+  border: 1px solid #d8dde3;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(22, 30, 39, 0.14);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.infoPopover strong {
+  font-weight: 800;
+}
+
+.sourceHelpRows {
+  display: grid;
+  gap: 7px;
+}
+
+.sourceHelpRows p {
+  margin: 0;
+}
+
+.rakenText { color: #9f531b; }
+.jonasText { color: #275bbd; }
+.paylocityText { color: #176b45; }
+
+.helpGuide {
+  position: relative;
+}
+
+.helpGuide > summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 10px;
+  color: #46515c;
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.helpGuide > summary::-webkit-details-marker { display: none; }
+
+.helpGuide[open] > summary,
+.helpGuide > summary:hover {
+  background: #f7f8fa;
+}
+
+.helpIcon {
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #bcc5ce;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.helpGuidePanel {
+  position: absolute;
+  z-index: 90;
+  top: calc(100% + 9px);
+  right: 0;
+  width: min(390px, 82vw);
+  display: grid;
+  gap: 0;
+  color: #35404b;
+  background: #fff;
+  border: 1px solid #d8dde3;
+  border-radius: 10px;
+  box-shadow: 0 18px 44px rgba(22, 30, 39, 0.16);
+  overflow: hidden;
+}
+
+.helpGuidePanel > div {
+  padding: 12px 14px;
+  border-bottom: 1px solid #edf0f3;
+}
+
+.helpGuidePanel > div:last-child {
+  border-bottom: 0;
+}
+
+.helpGuidePanel strong,
+.helpGuidePanel span {
+  display: block;
+}
+
+.helpGuidePanel strong {
+  font-size: 11px;
+  margin-bottom: 3px;
+}
+
+.helpGuidePanel span {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.headingActions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.boundaryWithInfo {
+  justify-content: flex-end;
+}
+
+.filterWithHint {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 780px) {
+  .topbarPurpose {
+    max-width: 320px;
+  }
+
+  .sectionLabelRow {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .helpGuidePanel {
+    position: fixed;
+    top: 82px;
+    left: 14px;
+    right: 14px;
+    width: auto;
+  }
+
+  .infoPopover {
+    position: fixed;
+    top: 96px;
+    left: 14px;
+    right: 14px;
+    width: auto;
+    transform: none;
+  }
+}

@@ -47,9 +47,12 @@ function baseRecord(employee: Employee, i: number): PayrollRecord {
 
 export function buildDemoDataset(): DemoDataset {
   const employees = makeEmployees();
-  const raken = employees.map(baseRecord);
-  const jonas = raken.map((r) => ({ ...r }));
-  const paylocity = raken.map((r) => ({ ...r }));
+  const raken = employees.map(baseRecord).map((record, i) => ({
+    ...record,
+    sourceApplicable: employees[i].role !== "Salary",
+  }));
+  const jonas = raken.map((r) => ({ ...r, sourceApplicable: true }));
+  const paylocity = raken.map((r) => ({ ...r, sourceApplicable: true }));
 
   const byId = (rows: PayrollRecord[], id: string) => rows.find((row) => row.employeeId === id)!;
 

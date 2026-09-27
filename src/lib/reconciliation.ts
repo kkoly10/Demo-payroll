@@ -37,7 +37,7 @@ export function reconcile(dataset: DemoDataset): PayrollException[] {
     ];
 
     for (const item of comparisons) {
-      if (r[item.key] !== j[item.key]) {
+      if (r.sourceApplicable !== false && r[item.key] !== j[item.key]) {
         exceptions.push({
           id: `${employee.id}-${item.kind}-rj`,
           employeeId: employee.id,
@@ -60,7 +60,7 @@ export function reconcile(dataset: DemoDataset): PayrollException[] {
       }
     }
 
-    if (r.costCode !== j.costCode) {
+    if (r.sourceApplicable !== false && r.costCode !== j.costCode) {
       exceptions.push({
         id: `${employee.id}-cost-code`,
         employeeId: employee.id,
@@ -105,12 +105,15 @@ export function employeeHasUnresolvedException(
 
 export function totals(rows: PayrollRecord[]) {
   return rows.reduce(
-    (acc, row) => ({
-      regular: acc.regular + row.regularHours,
-      overtime: acc.overtime + row.overtimeHours,
-      pto: acc.pto + row.ptoHours,
-      perDiem: acc.perDiem + row.perDiem,
-    }),
+    (acc, row) => {
+      if (row.sourceApplicable === false || row.checkCreated === false) return acc;
+      return {
+        regular: acc.regular + row.regularHours,
+        overtime: acc.overtime + row.overtimeHours,
+        pto: acc.pto + row.ptoHours,
+        perDiem: acc.perDiem + row.perDiem,
+      };
+    },
     { regular: 0, overtime: 0, pto: 0, perDiem: 0 }
   );
 }

@@ -228,6 +228,20 @@ Should show:
 - high-level source totals
 - clear path to View All Employees
 
+### Payroll process
+
+Should show the complete B&S control path without pretending the demo performs live payroll work:
+- inputs / pay-period evidence
+- payroll preparation and documented transformations
+- Jonas payroll and report evidence
+- transfer to Paylocity
+- final Jonas ↔ Paylocity reconciliation
+- separate human approval
+- separate human submission
+- Jonas closeout
+
+The process view should also demonstrate that B&S can choose different automation boundaries per operation. Read/compare, preparation, transfer, correction, and closeout may have different policies. Final payroll approval and submission remain human-controlled in the demo.
+
 ### Exception queue
 Should show:
 - employee

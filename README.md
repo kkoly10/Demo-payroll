@@ -116,7 +116,7 @@ The architecture is intended to mature through four modes:
 | Approval | Supported writes require human approval and read-back verification. |
 | Automated | Only explicitly approved low-risk actions may run automatically. |
 
-The current demo is effectively Read Only / synthetic.
+The current demo has no live writes. It can simulate Read Only, Shadow/preview, and approval-gated action flows entirely in the browser so the control model can be demonstrated without vendor credentials or real payroll data.
 
 ## UX model
 
@@ -144,12 +144,13 @@ Color is never the only identifier; source names remain visible.
 
 ### Core views
 
-- Overview — payroll health, source status, workflow stage, totals, exceptions
-- Exceptions — prioritized discrepancies with trace/evidence
+- Overview — payroll readiness, source evidence, workflow stage, final controls, exceptions
+- Payroll process — B&S's staged workflow, preparation previews, automation scope, human approval/submission gates, and closeout
+- Exceptions — prioritized preparation and final-payroll discrepancies with trace/evidence
 - Employees — full population/manual reassurance path
-- Employee Trace — three-way detail and likely first mismatch boundary
-- Audit — sync/review/action history
-- Integrations — IT/admin-only connector concept
+- Employee Trace — source evidence, approval provenance, documented transformations, handoffs, and destination verification
+- Audit — snapshots, decisions, proposals, receipts, read-back verification, and exports
+- Integrations — IT/admin-only connector and evidence-readiness concept
 
 ## Manual fallback is a feature
 

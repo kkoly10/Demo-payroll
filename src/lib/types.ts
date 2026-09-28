@@ -1,49 +1,136 @@
 export type SourceName = "raken" | "jonas" | "paylocity";
-
-export type PayrollRecord = {
-  employeeId: string;
-  regularHours: number;
-  overtimeHours: number;
-  ptoHours: number;
-  perDiem: number;
-  rate: number;
-  project: string;
-  costCode: string;
-  checkCreated?: boolean;
-  sourceApplicable?: boolean;
-};
-
+export type EvidenceSource = SourceName | "inputs";
+export type Boundary = "raken-jonas" | "inputs-jonas" | "jonas-paylocity" | "readiness";
+export type SourceFilter = "all" | "raken-jonas" | "jonas-paylocity";
+export type View = "overview" | "process" | "exceptions" | "employees" | "audit" | "integrations";
+export type Metric = "regular" | "overtime" | "pto" | "holiday" | "perDiemTaxed" | "perDiemNonTaxed" | "deductions" | "rate" | "costCode";
+export type Value = number | string | null;
+export type Health = "current" | "stale" | "partial" | "unavailable" | "not-loaded";
 export type Employee = {
   id: string;
   name: string;
-  role: "Field" | "Driver" | "Salary";
-  rakenId: string;
-  jonasId: string;
-  paylocityId: string;
+  role: "Field" | "Driver" | "Foreman" | "Salary";
+  expectedPay: boolean;
+  ids: Record<SourceName, string | null>;
+  job: string;
 };
-
-export type ExceptionKind =
-  | "missing-check"
-  | "regular-hours"
-  | "overtime"
-  | "pto"
-  | "per-diem"
-  | "rate"
-  | "cost-code";
-
-export type PayrollException = {
+export type PayrollLine = {
   id: string;
   employeeId: string;
-  kind: ExceptionKind;
-  severity: "critical" | "warning";
-  title: string;
-  detail: string;
-  boundary: "Raken → Jonas" | "Jonas → Paylocity" | "Needs review";
+  sourceEmployeeId: string;
+  periodId: string;
+  workDate: string;
+  batchId: string;
+  metric: Metric;
+  // Monetary values are integer cents. Hours are quarter-hour units in the fixtures.
+  value: number | string;
+  code: string;
+  job: string;
 };
-
+export type Check = { id: string; employeeId: string; batchId: string; periodId: string; category: "regular" | "supplemental" };
+export type SourceSnapshot = {
+  id: string;
+  source: EvidenceSource;
+  revision: number;
+  periodId: string;
+  capturedAt: string;
+  health: Health;
+  lines: PayrollLine[];
+  checks: Check[];
+  reports: { name: string; revision: number; result: "passed" | "review" }[];
+};
+export type PayrollRun = {
+  id: string;
+  company: string;
+  periodId: string;
+  periodLabel: string;
+  checkDate: string;
+  jonasPeriods: string[];
+};
+export type RuleBook = {
+  revision: number;
+  foreman40: string[];
+  sourceApprovals: Record<string, { by: string; at: string }>;
+  approvedCostMappings: Record<string, { from: string; to: string; job: string; reason: string; by: string }>;
+  validCostCodes: Record<string, string[]>;
+};
 export type DemoDataset = {
+  run: PayrollRun;
   employees: Employee[];
-  raken: PayrollRecord[];
-  jonas: PayrollRecord[];
-  paylocity: PayrollRecord[];
+  snapshots: Record<EvidenceSource, SourceSnapshot>;
+  rules: RuleBook;
+};
+export type ControlState = "passed" | "expected" | "review" | "unavailable" | "pending" | "not-applicable";
+export type ControlResult = {
+  id: string;
+  employeeId?: string;
+  boundary: Boundary;
+  metric?: Metric;
+  title: string;
+  state: ControlState;
+  severity: "critical" | "warning" | "info";
+  detail: string;
+  fromLabel: string;
+  toLabel: string;
+  from: Value;
+  expected: Value;
+  actual: Value;
+  rule?: string;
+  evidenceIds: string[];
+  sources?: EvidenceSource[];
+};
+export type PolicyMode = "manual" | "preview" | "approval";
+export type AutomationPolicy = {
+  collection: "manual" | "automatic";
+  preparation: "preview" | "automatic";
+  transfer: PolicyMode;
+  corrections: PolicyMode;
+  closeout: PolicyMode;
+};
+export type Change = { employeeId: string; metric: Metric; before: Value; after: number | string };
+export type ActionKind = "correction" | "mapping" | "jonas-input" | "paylocity-transfer" | "closeout";
+export type ActionStatus = "proposed" | "authorized" | "verification-pending" | "uncertain" | "verified" | "invalidated" | "failed";
+export type ActionProposal = {
+  id: string;
+  key: string;
+  kind: ActionKind;
+  controlId?: string;
+  employeeId?: string;
+  target: EvidenceSource;
+  title: string;
+  reason: string;
+  evidenceKey: string;
+  changes: Change[];
+  payloadLines?: PayrollLine[];
+  createCheck?: boolean;
+  status: ActionStatus;
+  receipt?: string;
+  simulatedOutcome?: "normal" | "uncertain" | "mismatch";
+  authorizedBy?: string;
+  verifiedSnapshotId?: string;
+};
+export type AuditEvent = {
+  id: string;
+  at: string;
+  actor: string;
+  type: string;
+  detail: string;
+  employeeId?: string;
+  actionId?: string;
+  changes?: Change[];
+  evidenceIds: string[];
+};
+export type Scenario = "review" | "preparation" | "ready" | "deductions" | "multiple" | "stale" | "wrong-period" | "unapproved";
+export type DemoState = {
+  dataset: DemoDataset;
+  history: SourceSnapshot[];
+  policy: AutomationPolicy;
+  actions: ActionProposal[];
+  audit: AuditEvent[];
+  scenario: Scenario;
+  outcome: "normal" | "uncertain" | "mismatch";
+  externalApproval?: string;
+  externalSubmission?: string;
+  closed: boolean;
+  notice: string;
 };

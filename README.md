@@ -260,8 +260,17 @@ Before any production work, confirm:
 
 ## Verification
 
+    npm test
     npm run lint
     npm run build
+
+## Production foundation
+
+The repository now includes generic production-governance contracts for linked payroll periods, versioned field-level authority, configuration pinning, separation of duties, stale-approval invalidation, and append-only audit behavior.
+
+See `docs/PRODUCTION_FOUNDATION.md`.
+
+The detailed B&S control matrix and Azure deployment specification are intentionally not committed while this repository remains public. Those belong in B&S-controlled private infrastructure before real payroll data or tenant-specific details are introduced.
 
 ## For coding agents
 

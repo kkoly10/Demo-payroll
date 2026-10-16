@@ -16,6 +16,6 @@ function compile(dir) {
 }
 try {
   compile("src/lib");compile("src/data");
-  const result=spawnSync(process.execPath,["--test","tests/domain.test.mjs"],{stdio:"inherit",env:{...process.env,PAYROLL_TEST_BUILD:temp}});
+  const result=spawnSync(process.execPath,["--test","tests/domain.test.mjs","tests/production-foundation-safe.test.mjs"],{stdio:"inherit",env:{...process.env,PAYROLL_TEST_BUILD:temp}});
   process.exitCode=result.status??1;
 } finally { fs.rmSync(temp,{recursive:true,force:true}); }

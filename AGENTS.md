@@ -477,3 +477,77 @@ The mature product should let an authorized Payroll user open one screen and qui
 > Are the right employees being paid the right hours/earnings, charged to the right jobs/costs, with Raken, Jonas, and Paylocity agreeing where they are supposed to agree—and if not, exactly what needs investigation before payroll is released?
 
 It should reduce repetitive comparison work while making the payroll process more transparent, not less.
+
+
+## Production governance invariants
+
+The production architecture is stricter than the demo. Preserve these invariants in new production-domain code:
+
+### Authority is field-level and versioned
+
+Do not treat Raken, Jonas, Paylocity, or any supporting source as globally authoritative.
+
+Production automation should use a versioned authority matrix. Each payroll fact is either:
+- proposed
+- confirmed
+- ambiguous
+
+Only confirmed authority may automatically clear a pay-critical control. Proposed/ambiguous authority stays reviewable.
+
+Do not commit B&S's detailed confirmed authority matrix to this public repository.
+
+### Payroll runs may contain linked periods
+
+A payroll run is not always one simple period.
+
+Production domain models must support:
+- one primary period
+- supplemental periods
+- retro / missed-hours periods
+- explicit parent/child links
+
+Do not flatten linked periods into one synthetic total when doing so hides separate evidence or closeout obligations.
+
+### Runs pin configuration
+
+An in-progress payroll run pins the versions of:
+- authority matrix
+- payroll rules
+- mappings
+- employee identity mapping
+
+A later configuration change must not silently alter the meaning of an existing run.
+
+### Stale approval must fail closed
+
+If evidence or pinned configuration changes after review, the prior approval is stale.
+
+Require review of the new evidence/configuration rather than carrying the old approval forward.
+
+### Sensitive configuration requires independent review
+
+For sensitive authority, rule, mapping, or identity changes:
+- author and approver must be different people
+- platform/application administration does not imply payroll approval authority
+- changes should use draft → review → approve → effective-date → publish semantics
+
+### Audit is append-only by default
+
+Meaningful production events should be added as new attributable records rather than rewriting prior audit facts.
+
+### Teams is not the payroll system of record
+
+Teams may deliver notifications and deep links.
+
+Payroll decisions, comments that justify controls, approvals, evidence versions, and audit history belong in the Payroll Operations application.
+
+### Public-repository boundary
+
+This repository may contain generic production contracts and synthetic tests, but must not contain:
+- confirmed B&S authority matrices
+- confidential B&S process specifications
+- tenant IDs or production resource names
+- real payroll exports or screenshots
+- production infrastructure secrets
+
+The detailed production control specification belongs in a B&S-controlled private repository/document store after migration.
